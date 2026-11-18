@@ -1,0 +1,27 @@
+# Python virtual environment and caches
+.venv/
+__pycache__/
+*.py[cod]
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+
+# Secrets: never commit credentials or private keys
+.env
+.aws/
+*credentials*
+*.pem
+
+# Chalice build files
+book-analyzer/.chalice/deployments/
+book-analyzer/.chalice/venv/
+*.bak
+
+# Your API's URL: submitted on Canvas, not published in your public fork
+book-analyzer/.chalice/deployed/
+results/api-url.txt
+
+# Downloaded books (they live in S3)
+pg*.txt
