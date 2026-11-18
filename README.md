@@ -6,7 +6,7 @@
 
 **The Case:** A classmate wants to build a web page that shows your books with their summaries, and a research group wants to pull the word statistics into a notebook. Both need your book analysis: the word statistics from [Lab 07](https://github.com/ksiller/lab-07-ec2-lambda) and the summaries and genres from [Lab 08](https://github.com/ksiller/lab-08-hpc). The analysis is stored in your MongoDB Atlas collection `gutenberg.books`, which only you can read, and neither the classmate nor the research group should get your Atlas password. In this lab you give them a URL instead: a read-only **web API** that anyone, or any program, can call to get the books and their analysis as JSON. The API runs only when someone calls the URL, and costs nothing while no requests come in.
 
-**Goal:** You extend your Lab 07 Chalice app `book-analyzer` with three web endpoints, test them on your computer, and deploy them to AWS: **API Gateway**, an AWS service that gives your API a public URL, receives each request and runs a Lambda function, which reads from MongoDB. In [Class 10](https://github.com/ksiller/DS2022/blob/main/class/10-fastapi/README.md) you built a Book API with FastAPI that ran on your computer, from a fixed dictionary in its code; this one runs in the cloud, on your real data.
+**Goal:** You extend your Lab 07 Chalice app `book-analyzer` with four web endpoints, test them on your computer, and deploy them to AWS: **API Gateway**, an AWS service that gives your API a public URL, receives each request and runs a Lambda function, which reads from MongoDB. In [Class 10](https://github.com/ksiller/DS2022/blob/main/class/10-fastapi/README.md) you built a Book API with FastAPI that ran on your computer, from a fixed dictionary in its code; this one runs in the cloud, on your real data.
 
 > [!IMPORTANT]
 > `mst3k` is a placeholder. Replace it everywhere with your UVA computing ID, for example `public-mst3k` → `public-abc2de`. If your Lab 06 bucket has a different name, use that name. Likewise, replace `YOUR_USERNAME` with your GitHub user name.
@@ -45,7 +45,7 @@ lab-10-api/
 
 You add these yourself:
 
-- `book-analyzer/`: your Chalice app from Lab 07, copied in Step 1.4, with three new routes
+- `book-analyzer/`: your Chalice app from Lab 07, copied in Step 1.4, with four new routes
 - `results/`, containing the outputs for your submission
 
 Write your answers in `KNOWLEDGE_CHECK.md`. Do not modify `README.md`.
@@ -79,6 +79,7 @@ In this lab you build and deploy an API with these endpoints:
 | `GET /` | `{"books": 101}`: the number of documents in `gutenberg.books` (provided) |
 | `GET /books` | a list of `{"_id", "title", "author"}`, sorted by title; `?author=...` keeps one author's books |
 | `GET /books/{key}` | the document of one book, without its dates; `404` if there is no such book |
+| `GET /page` | a web page with the list of books, for the browser (provided; it uses your `list_books()` function) |
 | `GET /authors` | optional (Step 2.8): the names of the authors, each once, sorted |
 
 **Where you work.** Everything runs in the **terminal on your computer**. You test the API on your computer, then deploy it to AWS; both read from your Atlas cluster.
@@ -230,15 +231,17 @@ cd book-analyzer
 
 Open `book-analyzer/app.py`. Keep everything that is there: your Lab 07 handler must still work after the deploy. Make two changes.
 
-**1. Change the two imports** at the top, so that they read:
+**1. Add `import html` and change the two `from` imports** at the top, so that they read:
 
 ```python
-from chalice import Chalice, NotFoundError
+import html
+
+from chalice import Chalice, NotFoundError, Response
 
 from chalicelib.analyze import COLLECTION, DATABASE, analyze_book, connect
 ```
 
-`NotFoundError` is the error that Chalice turns into a `404` response. The `connect()` function and the names `DATABASE` (`"gutenberg"`) and `COLLECTION` (`"books"`) come from the same `analyze.py` that your Lambda function already uses: `connect()` reads the Atlas settings from your `MONGODB_ATLAS_*` variables on your computer, and from the SSM parameter `mongodb_credentials` in Lambda.
+`NotFoundError` is the error that Chalice turns into a `404` response, and `Response` lets a route answer with something other than JSON, here a web page; `html` is Python's module for web page text. The `connect()` function and the names `DATABASE` (`"gutenberg"`) and `COLLECTION` (`"books"`) come from the same `analyze.py` that your Lambda function already uses: `connect()` reads the Atlas settings from your `MONGODB_ATLAS_*` variables on your computer, and from the SSM parameter `mongodb_credentials` in Lambda.
 
 **2. Add this code at the end of the file**, below the `analyze_new_book()` function:
 
@@ -274,6 +277,24 @@ def list_books():
 def get_book(key):
     """Return the document of one book, for example /books/pg11.txt; 404 if there is none."""
     # TODO Step 2.4: replace this line with your code (see the README)
+
+
+@app.route("/page")
+def page():
+    """Return your book list as a web page for the browser; each title links to its document.
+
+    It uses your list_books() function (Step 2.3), so it works once list_books() is done.
+    /page?author=Mark%20Twain shows only that author's books, as /books does.
+    """
+    rows = []
+    for book in list_books():
+        key = html.escape(book["_id"])
+        title = html.escape(book.get("title", "(no title)"))
+        author = html.escape(book.get("author", "(unknown author)"))
+        rows.append(f'<li><a href="books/{key}">{title}</a> by {author}</li>')
+    body = "<!doctype html><title>My books</title><h1>My books</h1><ul>" + "".join(rows) + "</ul>"
+    # Without this header, Chalice sends the text as JSON, and the browser shows the HTML code
+    return Response(body=body, status_code=200, headers={"Content-Type": "text/html"})
 ```
 
 The `index()` function is complete; it is the model for the other two. What the provided parts do:
@@ -285,6 +306,9 @@ The `index()` function is complete; it is the model for the other two. What the 
 | `count_documents({})` | counts the documents that match the empty filter `{}`, so all of them (Lab 05) |
 | `return {"books": count}` | Chalice turns the returned dictionary or list into a JSON response with status `200` |
 | `BOOK_FIELDS` | a projection you use in the `get_book()` function in Step 2.4; the `index()` and `list_books()` functions don't need it |
+| `@app.route("/page")` and the `page()` function | a route for the browser: it builds a web page (HTML) from the list that your `list_books()` function returns, with each title linked to `books/<_id>`. It works once you have written `list_books()` in Step 2.3 |
+| `html.escape(...)` | replaces characters that have a meaning in HTML, such as `<` and `&`, so that a title cannot break the page |
+| `Response(..., headers={"Content-Type": "text/html"})` | tells the browser that the answer is a web page, not JSON |
 
 ### 2.2 Test on your computer with `chalice local`
 
@@ -341,6 +365,8 @@ The first prints all your books, starting with the titles that begin with `A`; t
 Put a URL with `?` or `&` in quotes: unquoted, your shell would treat these characters itself. `%20` is a space; a URL cannot contain a space.
 
 **Optional: pretty-print with `jq`.** `curl -s http://127.0.0.1:8000/books | jq '.[].title'` prints only the titles; `jq length` counts the books.
+
+**See it in your browser.** Open [http://127.0.0.1:8000/page](http://127.0.0.1:8000/page): the provided `page()` function shows the list from your `list_books()` function as a web page. The titles link to the documents, which work after Step 2.4.
 
 ### 2.4 Write the `get_book()` function
 
@@ -412,7 +438,7 @@ Resources deployed:
 | Resource | What it is |
 | --- | --- |
 | `book-analyzer-dev-analyze_new_book` | your Lab 07 function, updated in place; S3 still triggers it |
-| `book-analyzer-dev` | **new**: one Lambda function for all three routes. Its name has no function name at the end, as your Lab 07 function has, because it runs every `@app.route` handler |
+| `book-analyzer-dev` | **new**: one Lambda function for all routes. Its name has no function name at the end, as your Lab 07 function has, because it runs every `@app.route` handler |
 | `Rest API URL` | **new**: the public URL of your API in API Gateway (Chalice calls this kind of API a *REST API*). `/api/` at the end is the stage, as in [APIs, endpoints, and requests](#apis-endpoints-and-requests) |
 
 `uv run chalice url` prints the URL again at any time. Save it in a variable `API` for the next commands, and in a file for your submission:
@@ -430,7 +456,7 @@ You upload `results/api-url.txt` to Canvas in Step 3.3. Git does not commit it: 
 
 In the **AWS Console**, check:
 
-- **The API:** **API Gateway** → **APIs** → `book-analyzer`. Under **Resources** you see your three paths, `/`, `/books`, and `/books/{key}`, each with a `GET` method.
+- **The API:** **API Gateway** → **APIs** → `book-analyzer`. Under **Resources** you see your four paths, `/`, `/books`, `/books/{key}`, and `/page` (and `/authors` if you did Step 2.8), each with a `GET` method.
 - **The function:** **Lambda** → **Functions** → `book-analyzer-dev`. Its **Function overview** shows **API Gateway** as the trigger.
 
 ### 2.6 Call your API in the cloud
@@ -465,7 +491,7 @@ HTTP/2 403
 
 API Gateway answers this itself, without running your function: it has no route `/book/{key}`. The message is misleading; it does not mean that your API needs a login. It is how API Gateway reports a path or method it does not know.
 
-Open `${API}books/pg74.txt` in your browser too: any browser can call your API, on any computer. Then save two responses for your submission:
+Open `${API}page` in your browser too, and click a title: any browser can call your API, on any computer. Then save two responses for your submission:
 
 ```bash
 curl -s ${API}books > ../results/book-list.json
@@ -610,7 +636,7 @@ Submit from the top folder of your clone. Do not change `README.md`. Your reposi
 
 ```text
 lab-10-api/
-├── book-analyzer/          # your Lab 07 app, with the three API routes you added
+├── book-analyzer/          # your Lab 07 app, with the API routes you added
 ├── KNOWLEDGE_CHECK.md      # your answers
 ├── results/
 │   ├── api-url.txt     # not committed: you upload it to Canvas

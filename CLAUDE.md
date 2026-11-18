@@ -33,7 +33,9 @@ never on `gutenberg.books` with this lab's fields and routes. You may review the
 handler against the README's requirement table and name what is missing or wrong, without
 writing the corrected code.
 
-`index()`, the decorators and signatures of the routes, and `BOOK_FIELDS` are provided;
+`index()`, `page()` (a web page built from the student's `list_books()`, returned with
+`Response` and `Content-Type: text/html`), the decorators and signatures of the routes, and
+`BOOK_FIELDS` are provided;
 explaining them in full is fine. Comparing with the student's FastAPI code from class 10 is a
 good way to explain a Chalice construct.
 
