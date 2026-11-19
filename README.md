@@ -6,7 +6,7 @@
 
 **The Case:** A classmate wants to build a web page that shows your books with their summaries, and a research group wants to pull the word statistics into a notebook. Both need your book analysis: the word statistics from [Lab 07](https://github.com/ksiller/lab-07-ec2-lambda) and the summaries and genres from [Lab 08](https://github.com/ksiller/lab-08-hpc). The analysis is stored in your MongoDB Atlas collection `gutenberg.books`, which only you can read, and neither the classmate nor the research group should get your Atlas password. In this lab you give them a URL instead: a read-only **web API** that anyone, or any program, can call to get the books and their analysis as JSON. The API runs only when someone calls the URL, and costs nothing while no requests come in.
 
-**Goal:** You extend your Lab 07 Chalice app `book-analyzer` with four web endpoints, test them on your computer, and deploy them to AWS: **API Gateway**, an AWS service that gives your API a public URL, receives each request and runs a Lambda function, which reads from MongoDB. In [Class 10](https://github.com/ksiller/DS2022/blob/main/class/10-fastapi/README.md) you built a Book API with FastAPI that ran on your computer, from a fixed dictionary in its code; this one runs in the cloud, on your real data.
+**Goal:** You extend your Lab 07 Chalice app `book-analyzer` with four web endpoints, test them on your computer, and deploy them to AWS: **API Gateway**, an AWS service that gives your API a public URL, receives each request and runs a Lambda function, which reads from MongoDB. For comparison, [Class 10](https://github.com/ksiller/DS2022/blob/main/class/10-fastapi/README.md) shows a small Book API built with FastAPI, which runs on your computer and serves a fixed dictionary from its code; your API runs in the cloud and serves the book analysis in your Atlas collection.
 
 > [!IMPORTANT]
 > `mst3k` is a placeholder. Replace it everywhere with your UVA computing ID, for example `public-mst3k` → `public-abc2de`. If your Lab 06 bucket has a different name, use that name. Likewise, replace `YOUR_USERNAME` with your GitHub user name.
@@ -18,15 +18,12 @@
 - Test an API on your computer (`chalice local`) before you deploy it
 - Deploy the API with `chalice deploy`, and know what it creates in AWS: an API in API Gateway and a second Lambda function
 - Call an API from the command line with `curl`, and read its status code and headers
-- Compare a serverless API (Chalice) with an API served by a running program (FastAPI, Class 10)
-
 
 The lab builds on:
 
 - [Lab 05: NoSQL with MongoDB](https://github.com/ksiller/lab-05-nosql): `find`, projections, and `count_documents`
 - [Lab 07: EC2 and Lambda](https://github.com/ksiller/lab-07-ec2-lambda): your Chalice app `book-analyzer`, and the SSM parameter `mongodb_credentials`
 - [Lab 08: HPC](https://github.com/ksiller/lab-08-hpc): the `llm_analysis` fields in your documents
-- [Class 10: FastAPI](https://github.com/ksiller/DS2022/blob/main/class/10-fastapi/README.md): endpoints, path parameters, `curl`, status codes, and a Book API with FastAPI
 
 ## What is in this repository
 
@@ -60,7 +57,7 @@ GET https://abc123.execute-api.us-east-1.amazonaws.com/api/books?author=Mark%20T
 method            server (API Gateway)                 endpoint   query parameter
 ```
 
-When you deploy, AWS API Gateway gives your API its server name; yours will have another code instead of `abc123`. `/api` is the **stage**: API Gateway can serve several versions of an API, and Chalice names your version `api`, so every path of your API will start with `/api`. It is like `/v1` in the Open-Meteo URL from class. **In the URL, the endpoint includes the stage (`/api/books`); in your Chalice code you write the route without it (`/books`).**
+When you deploy, AWS API Gateway gives your API its server name; yours will have another code instead of `abc123`. `/api` is the **stage**: API Gateway can serve several versions of an API, and Chalice names your version `api`, so every endpoint of your API will start with `/api`. It is like `/v1` in the Open-Meteo URL from class. **In the URL, the endpoint includes the stage (`/api/books`); in your Chalice code you write the route without it (`/books`).**
 
 | Term | Meaning | In this lab |
 | --- | --- | --- |
@@ -115,13 +112,14 @@ uv run chalice --version
 
 ### 1.3 AWS credentials, Atlas, and your Lab 07 resources
 
-Your API reuses four things from Lab 07: 
-- your AWS credentials, 
-- the Lambda function `book-analyzer-dev-analyze_new_book`, 
-- and the SSM parameter `mongodb_credentials`. 
-- It also needs your Atlas cluster. 
+Your API reuses three things from Lab 07, and your Atlas cluster from Lab 05:
 
-Check each one now, so that you can address problems now before starting with the deployment steps.
+- your AWS credentials
+- the Lambda function `book-analyzer-dev-analyze_new_book`
+- the SSM parameter `mongodb_credentials`
+- your Atlas cluster
+
+Check each one now, so that you can fix problems before you deploy.
 
 Start the Learner Lab, and copy the credentials from **AWS Details** into `~/.aws/credentials` (Lab 07, Setup, Step 4).
 
@@ -181,7 +179,8 @@ Copy the whole folder `book-analyzer/` from your Lab 07 clone into the top folde
 cp -R ../lab-07-ec2-lambda/book-analyzer .
 ```
 
-Then list what you copied (`-A` also shows hidden folders such as `.chalice`).
+Then list what you copied (`-A` also shows hidden folders such as `.chalice`):
+
 ```bash
 ls -A book-analyzer book-analyzer/.chalice
 ```
@@ -222,10 +221,14 @@ Now check that you copied the app you deployed in Lab 07. Run each command on it
 3. Compare the copied `analyze.py` with the one in this repository:
 
    ```bash
-   diff book-analyzer/chalicelib/analyze.py src/book_analysis/analyze.py && echo 'Good, the `analyze.py` is identical in both places and ready for your edits'
+   diff book-analyzer/chalicelib/analyze.py src/book_analysis/analyze.py && echo 'Good, the `analyze.py` is identical in both places'
    ```
 
-   It should print ``Good, the `analyze.py` is identical in both places and ready for your edits``. If it prints lines with `<` and `>`, the two files differ: copy `src/book_analysis/analyze.py` to `book-analyzer/chalicelib/analyze.py`.
+   It should print ``Good, the `analyze.py` is identical in both places``. If it prints lines with `<` and `>`, the two files differ. Copy the file from this repository over the copied one:
+
+   ```bash
+   cp src/book_analysis/analyze.py book-analyzer/chalicelib/analyze.py
+   ```
 
 ## Step 2: Build the API with Chalice
 
@@ -236,7 +239,7 @@ Now check that you copied the app you deployed in Lab 07. Run each command on it
 - an **API in Amazon API Gateway**, which gives the API its public URL, receives each request, and passes it to a Lambda function
 - a **second Lambda function**, which answers the requests: it reads from MongoDB and returns JSON
 
-You do not create them by hand. You add the API functionality to your Lab 07 Chalice app, and `chalice deploy` creates both the needed API Gateway and the new Lambda function. In Lab 07 you wrote one handler, `analyze_new_book()`, with the decorator `@app.on_s3_event`: S3 events run it.
+You do not create them by hand. You add the API functionality to your Lab 07 Chalice app, and `chalice deploy` creates both the API in API Gateway and the new Lambda function. In Lab 07 you wrote one handler, `analyze_new_book()`, with the decorator `@app.on_s3_event`: S3 events run it.
 
 In Step 2.1 you add handlers with the decorator `@app.route`: HTTP requests run them. Chalice puts all route handlers into **one** new Lambda function, `book-analyzer-dev`, and creates the API in API Gateway in front of it. Your Lab 07 function stays as it is.
 
@@ -316,7 +319,7 @@ def page():
     return Response(body=body, status_code=200, headers={"Content-Type": "text/html"})
 ```
 
-The `index()` function is complete; it is the model for the other two. What the provided parts do:
+The `index()` function is complete; it is the model for the `list_books()` and `get_book()` functions. What the provided parts do:
 
 | Part | What it does |
 | --- | --- |
@@ -512,7 +515,7 @@ HTTP/2 403
 
 API Gateway answers this itself, without running your function: it has no route `/book/{key}`. The message is misleading; it does not mean that your API needs a login. It is how API Gateway reports a path or method it does not know.
 
-Open `${API}page` in your browser too, and click a title: any browser can call your API, on any computer. Then save two responses for your submission:
+Open your API's URL followed by `page` in your browser too (`echo ${API}page` prints it), and click a title: any browser can call your API, on any computer. Then save two responses for your submission:
 
 ```bash
 curl -s ${API}books > ../results/book-list.json
@@ -639,15 +642,12 @@ cd ..
 
 **Congratulations, you did it! As a last step, complete the [Knowledge check](#knowledge-check) below and [submit](#step-3-submit-your-work).**
 
-
 ## Knowledge check
 
-The questions are in [KNOWLEDGE_CHECK.md](KNOWLEDGE_CHECK.md), in the top folder of your cloned repository. Open it, and write your answer below each question, in your own words:
+The questions are in [KNOWLEDGE_CHECK.md](KNOWLEDGE_CHECK.md), in the top folder of your cloned repository. Open it, take the screenshot for question 1, and write your answer to question 2 in your own words:
 
-1. **API Gateway:** follow a request from your API's URL to the Lambda function that answers it (screenshot: `results/api-gateway.png`)
-2. **Status codes:** who has to fix a `403`, a `404`, and a `500`
-3. **An open URL:** what an open, read-only API risks, and one way to limit it
-4. **Chalice or FastAPI?** your Chalice API or a FastAPI server as in Class 10, for a given case, and why
+1. **From the URL to the function:** find the Lambda function behind an endpoint in API Gateway (screenshot: `results/api-gateway.png`)
+2. **Which Lambda function answers the request?** why Chalice created a new function for your API
 
 ## Step 3: Submit your work
 
@@ -660,7 +660,7 @@ lab-10-api/
 ├── book-analyzer/          # your Lab 07 app, with the API routes you added
 ├── KNOWLEDGE_CHECK.md      # your answers
 ├── results/
-│   ├── api-url.txt     # not committed: you upload it to Canvas
+│   ├── api-url.txt         # not committed: you upload it to Canvas
 │   ├── book-list.json
 │   ├── single-book.json
 │   ├── new-book.json
@@ -716,7 +716,7 @@ claude
 
 Claude Code reads [CLAUDE.md](CLAUDE.md) in this repository: instructions that tell it about the lab, the Learner Lab, and your Atlas cluster, so you do not have to explain them yourself.
 
-**In this repository, Claude Code works as your teaching assistant (TA).** `CLAUDE.md` tells it to explain, to help you find the cause of an error, and to give you hints, but not to write the graded parts for you: the bodies of the `list_books()` and `get_book()` functions in `book-analyzer/app.py`, and your answers in `KNOWLEDGE_CHECK.md`. If you ask it for one of these, it says so and gives you the next hint instead. That is intended, not a malfunction.
+**In this repository, Claude Code works as your teaching assistant (TA).** `CLAUDE.md` tells it to explain, to help you find the cause of an error, and to give you hints, but not to write the graded parts for you: the bodies of the `list_books()` and `get_book()` functions (and of the optional `list_authors()`) in `book-analyzer/app.py`, and your answers in `KNOWLEDGE_CHECK.md`. If you ask it for one of these, it says so and gives you the next hint instead. That is intended, not a malfunction.
 
 The goal is that you can build, test, and debug an API, not that Claude Code can. Ask it to explain before it changes anything, and read every `aws`, `chalice`, and `curl` command before you let it run one.
 
@@ -740,10 +740,10 @@ The goal is that you can build, test, and debug an API, not that Claude Code can
 
 **Setup and `chalice deploy`**
 
-- `chalice deploy`**:** `ResourceConflictException` **or** `Function already exist`**.** Chalice does not know about your Lab 07 deployment: `book-analyzer/.chalice/deployed/dev.json` is missing, because the folder was not copied from your Lab 07 clone (Step 1.4). Copy the folder again from your Lab 07 clone or your Lab 07 fork. If you no longer have `dev.json` anywhere, delete the function as in Lab 07, Troubleshooting (**Lambda** → `book-analyzer-dev-analyze_new_book` → **Delete**, and the bucket's event notification), then deploy again.
-- `chalice deploy`**:** `iam:CreateRole` **or** `ACCOUNT_ID` **in an error message.** `book-analyzer/.chalice/config.json` is not the one from Lab 07. Copy the folder again (Step 1.4).
+- `chalice deploy`**:** `ResourceConflictException` **or** `Function already exist`**.** Chalice does not know about your Lab 07 deployment: `book-analyzer/.chalice/deployed/dev.json` is missing, because the folder was not copied from your Lab 07 clone (Step 1.4). Copy only the `deployed` folder, not the whole app, so that your routes in `app.py` stay: `cp -R ../lab-07-ec2-lambda/book-analyzer/.chalice/deployed book-analyzer/.chalice/` (if your clone is not in `../lab-07-ec2-lambda`, use its path instead). If you no longer have `dev.json` anywhere, delete the function as in Lab 07, Troubleshooting (**Lambda** → `book-analyzer-dev-analyze_new_book` → **Delete**, and the bucket's event notification), then deploy again.
+- `chalice deploy`**:** `iam:CreateRole` **or** `ACCOUNT_ID` **in an error message.** `book-analyzer/.chalice/config.json` is not the one from Lab 07. Copy only that file, not the whole app, so that your routes in `app.py` stay: `cp ../lab-07-ec2-lambda/book-analyzer/.chalice/config.json book-analyzer/.chalice/` (if your clone is not in `../lab-07-ec2-lambda`, use its path instead).
 - `ExpiredToken` **or** `InvalidClientTokenId`**.** Your lab session changed. Paste a fresh block from **AWS Details** → **AWS CLI** into `~/.aws/credentials`.
-- `Address already in use` **from** `chalice local`**.** Another server still runs on port 8000, for example the FastAPI server from Class 10. Stop it with **Ctrl+C** in its terminal, or start this one on another port with `--port 8001` (and use that port in your URLs).
+- `Address already in use` **from** `chalice local`**.** Another server still runs on port 8000, for example a server you started in class. Stop it with **Ctrl+C** in its terminal, or start this one on another port with `--port 8001` (and use that port in your URLs).
 
 **Your routes**
 
@@ -787,5 +787,5 @@ The goal is that you can build, test, and debug an API, not that Claude Code can
 - Every request opens a new connection to Atlas, and in Lambda also reads the SSM parameter, then closes both. Many requests at once would mean many connections to a free cluster. Connecting once and reusing the connection for later requests would be faster.
 - The API is open: no API key, no user accounts, no limit on requests. Real APIs often require an API key (in Chalice: `api_key_required=True`) and set rate limits, as the APIs from class do.
 - `GET /books` returns all books in one response. With thousands of books, an API returns them in pages (`?skip=` and `?limit=`).
-- The API leaves out the dates. A real API converts them to text, such as `"2026-11-12T15:20:41Z"`, which FastAPI (Class 10) does automatically and Chalice does not.
+- The API leaves out the dates. A real API converts them to text, such as `"2026-11-12T15:20:41Z"`, which some frameworks, such as FastAPI, do automatically and Chalice does not.
 - There are no automated tests. Chalice has a test client (`chalice.test.Client`) that calls your routes without a server, so that they can be checked automatically after every change.
