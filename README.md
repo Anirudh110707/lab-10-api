@@ -56,11 +56,11 @@ An **API** (application programming interface) is a way for programs to talk to 
 
 ```text
 GET https://abc123.execute-api.us-east-1.amazonaws.com/api/books?author=Mark%20Twain
-└┬┘ └───────────────────────┬────────────────────────┘└┬─┘└──┬─┘└────────┬─────────┘
-method            server (API Gateway)               stage path   query parameter
+└┬┘ └───────────────────────┬────────────────────────┘└────┬───┘└────────┬─────────┘
+method            server (API Gateway)                 endpoint   query parameter
 ```
 
-When you deploy, API Gateway gives your API its server name; yours will have another code instead of `abc123`. `/api` is the **stage**: API Gateway can serve several versions of an API, and Chalice names your version `api`, so every path of your API will start with `/api`. It is like `/v1` in the Open-Meteo URL from class.
+When you deploy, AWS API Gateway gives your API its server name; yours will have another code instead of `abc123`. `/api` is the **stage**: API Gateway can serve several versions of an API, and Chalice names your version `api`, so every path of your API will start with `/api`. It is like `/v1` in the Open-Meteo URL from class. **In the URL, the endpoint includes the stage (`/api/books`); in your Chalice code you write the route without it (`/books`).**
 
 | Term | Meaning | In this lab |
 | --- | --- | --- |
@@ -86,7 +86,7 @@ In this lab you build and deploy an API with these endpoints:
 
 ## Step 1: Setup
 
-<!-- TODO diagram: docs/setup.png - laptop: clone of lab-10-api with book-analyzer/ copied from the Lab 07 clone (app.py, chalicelib/analyze.py, .chalice/config.json, .chalice/deployed/dev.json); AWS (already there from Lab 07): bucket public-mst3k, Lambda book-analyzer-dev-analyze_new_book with S3 trigger, SSM mongodb_credentials; Atlas gutenberg.books (101 documents, with llm_analysis from Lab 08); MONGODB_ATLAS_* env vars on the laptop -->
+![Step 1: what already exists, and what you set up](docs/setup.png)
 
 ### 1.1 Fork and clone this repository
 
@@ -104,7 +104,7 @@ pwd
 
 ### 1.2 Python environment
 
-Create the environment from `pyproject.toml` and `uv.lock`, and check that Chalice is installed:
+Create the environment from `pyproject.toml` and `uv.lock`, which define the needed Python packages. Then check that Chalice is installed:
 
 ```bash
 uv sync
@@ -115,7 +115,13 @@ uv run chalice --version
 
 ### 1.3 AWS credentials, Atlas, and your Lab 07 resources
 
-Your API reuses three things from Lab 07: your AWS credentials, the Lambda function `book-analyzer-dev-analyze_new_book`, and the SSM parameter `mongodb_credentials`. It also needs your Atlas cluster. Check each one now, so that a problem shows up here and not in the middle of a deploy.
+Your API reuses four things from Lab 07: 
+- your AWS credentials, 
+- the Lambda function `book-analyzer-dev-analyze_new_book`, 
+- and the SSM parameter `mongodb_credentials`. 
+- It also needs your Atlas cluster. 
+
+Check each one now, so that you can address problems now before starting with the deployment steps.
 
 Start the Learner Lab, and copy the credentials from **AWS Details** into `~/.aws/credentials` (Lab 07, Setup, Step 4).
 
@@ -161,18 +167,22 @@ The ping comes from your computer. The API you deploy will run in Lambda, which 
 
 ### 1.4 Copy your Chalice app from Lab 07
 
-You extend the app you deployed in Lab 07, not a new one.
+You extend the app you deployed in Lab 07; you do not start a new one. The app is the folder `book-analyzer/` in your Lab 07 clone, including the hidden folder `.chalice/deployed/`, which records your Lab 07 deployment.
 
-If your Lab 07 clone is not on this computer, clone your Lab 07 fork next to this repository first. You committed `book-analyzer/`, including `.chalice/deployed/`, in Lab 07:
+**No Lab 07 clone on this computer?** Clone your Lab 07 fork next to this repository first:
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/lab-07-ec2-lambda.git ../lab-07-ec2-lambda
 ```
 
-Copy the whole folder `book-analyzer/` from your Lab 07 clone into the top folder of this repository. **Replace the path** `../lab-07-ec2-lambda` if your Lab 07 clone is somewhere else:
+Copy the whole folder `book-analyzer/` from your Lab 07 clone into the top folder of this repository (if your clone is not in `../lab-07-ec2-lambda`, use its path instead):
 
 ```bash
 cp -R ../lab-07-ec2-lambda/book-analyzer .
+```
+
+Then list what you copied (`-A` also shows hidden folders such as `.chalice`).
+```bash
 ls -A book-analyzer book-analyzer/.chalice
 ```
 
@@ -192,7 +202,14 @@ Now check that you copied the app you deployed in Lab 07. Run each command on it
    grep -n "BUCKET =" book-analyzer/app.py
    ```
 
-   It prints one line such as `15:BUCKET = "public-mst3k"`, with your computing ID instead of `mst3k`. If it shows `mst3k` or another bucket, you copied the wrong folder: delete the copy with `rm -rf book-analyzer`, and copy the folder again from your Lab 07 clone, at the start of this step (Step 1.4). If that clone is not your finished Lab 07 app, clone your Lab 07 fork instead, also at the start of this step.
+   It prints one line such as `15:BUCKET = "public-mst3k"`, with your computing ID instead of `mst3k`. If it shows `mst3k` or another bucket, this is not your finished Lab 07 app. Delete the copy with `rm -rf book-analyzer`, and copy `book-analyzer/` again from the clone that has your finished Lab 07 work. If no clone on this computer has it (for example, you finished Lab 07 on another computer and pushed it to GitHub), clone your fork into a new folder and copy from there:
+
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/lab-07-ec2-lambda.git ../lab-07-fresh
+   cp -R ../lab-07-fresh/book-analyzer .
+   ```
+
+   Then run these checks again.
 
 2. Show the line where your Lab 07 handler analyzes a new book:
 
@@ -200,7 +217,7 @@ Now check that you copied the app you deployed in Lab 07. Run each command on it
    grep -n "analyze_book(" book-analyzer/app.py
    ```
 
-   It prints a line such as `26:    analyze_book(event.bucket, event.key)`: the code you wrote in Lab 07, Part 2. If it prints nothing, this is not your finished Lab 07 app: delete the copy with `rm -rf book-analyzer`, and copy the folder again from your *completed* Lab 07 clone, at the start of this step (Step 1.4). If that clone is not your finished Lab 07 app, clone your Lab 07 fork instead, also at the start of this step.
+   It prints a line such as `26:    analyze_book(event.bucket, event.key)`: the code you wrote in Lab 07, Part 2. If it prints nothing, this is not your finished Lab 07 app: fix it as described in check 1.
 
 3. Compare the copied `analyze.py` with the one in this repository:
 
@@ -212,14 +229,16 @@ Now check that you copied the app you deployed in Lab 07. Run each command on it
 
 ## Step 2: Build the API with Chalice
 
-<!-- TODO diagram: docs/api.png - client (curl, browser) -> HTTPS GET /api/books/{key} -> API Gateway API book-analyzer (stage api) -> Lambda book-analyzer-dev (handler app.app, routes index, list_books, get_book; role LabRole) -> SSM mongodb_credentials -> Atlas gutenberg.books (find, projection) -> JSON back to the client; next to it, unchanged from Lab 07: S3 public-mst3k -> book-analyzer-dev-analyze_new_book -> Atlas; laptop: chalice local on 127.0.0.1:8000 with MONGODB_ATLAS_* for testing -->
+![Step 2: your API in AWS, and the path of a request](docs/api.png)
 
 **What we need:** The API needs two new parts in AWS.
 
 - an **API in Amazon API Gateway**, which gives the API its public URL, receives each request, and passes it to a Lambda function
 - a **second Lambda function**, which answers the requests: it reads from MongoDB and returns JSON
 
-You do not create them by hand. You add the API functionality to your Lab 07 Chalice app, and `chalice deploy` creates both the needed API Gateway and the new Lambda function. In Lab 07 you wrote one handler, `analyze_new_book()`, with the decorator `@app.on_s3_event`: S3 events run it. Now you add handlers with the decorator `@app.route`: HTTP requests run them. Chalice puts all route handlers into **one** new Lambda function, `book-analyzer-dev`, and creates the API in API Gateway in front of it. Your Lab 07 function stays as it is.
+You do not create them by hand. You add the API functionality to your Lab 07 Chalice app, and `chalice deploy` creates both the needed API Gateway and the new Lambda function. In Lab 07 you wrote one handler, `analyze_new_book()`, with the decorator `@app.on_s3_event`: S3 events run it.
+
+In Step 2.1 you add handlers with the decorator `@app.route`: HTTP requests run them. Chalice puts all route handlers into **one** new Lambda function, `book-analyzer-dev`, and creates the API in API Gateway in front of it. Your Lab 07 function stays as it is.
 
 Work in the `book-analyzer/` folder for Steps 2.1 to 2.6:
 
@@ -229,7 +248,7 @@ cd book-analyzer
 
 ### 2.1 Add the routes to `app.py`
 
-Open `book-analyzer/app.py`. Keep everything that is there: your Lab 07 handler must still work after the deploy. Make two changes.
+Open `book-analyzer/app.py`. Keep everything that is there: your S3 event handler must still work after the deploy. Make two changes.
 
 **1. Add `import html` and change the two `from` imports** at the top, so that they read:
 
@@ -329,6 +348,8 @@ curl http://127.0.0.1:8000/
 {"books":101}
 ```
 
+In the APIs lecture you used `curl -X GET ...`. `GET` is `curl`'s default method, so `curl http://127.0.0.1:8000/` and `curl -X GET http://127.0.0.1:8000/` send the same request. This lab leaves out `-X GET`.
+
 You can also open [http://127.0.0.1:8000/](http://127.0.0.1:8000/) in your browser. The first terminal logs one line per request, with its status code. `chalice local` reloads your code when you save `app.py`, so leave it running while you work on Steps 2.3 and 2.4. Stop it with **Ctrl+C** when you are done.
 
 > [!NOTE]
@@ -362,7 +383,7 @@ The first prints all your books, starting with the titles that begin with `A`; t
 [{"_id":"pg74.txt","author":"Mark Twain","title":"The Adventures of Tom Sawyer, Complete"},{"_id":"pg1837.txt","author":"Mark Twain","title":"The Prince and the Pauper"}]
 ```
 
-Put a URL with `?` or `&` in quotes: unquoted, your shell would treat these characters itself. `%20` is a space; a URL cannot contain a space.
+Put a URL with `?` or `&` in quotes: unquoted, your shell would treat these characters itself. `%20` is a space; a URL cannot contain a space. This is called **URL encoding**: a character that a URL cannot contain is written as `%` and a two-digit code, for example `%20` for a space. Your browser encodes URLs for you when you type them; in curl you write the encoded form yourself.
 
 **Optional: pretty-print with `jq`.** `curl -s http://127.0.0.1:8000/books | jq '.[].title'` prints only the titles; `jq length` counts the books.
 
