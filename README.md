@@ -328,9 +328,7 @@ The `index()` function is complete; it is the model for the `list_books()` and `
 | `count_documents({})` | counts the documents that match the empty filter `{}`, so all of them (Lab 05) |
 | `return {"books": count}` | Chalice turns the returned dictionary or list into a JSON response with status `200` |
 | `BOOK_FIELDS` | a projection you use in the `get_book()` function in Step 2.4; the `index()` and `list_books()` functions don't need it |
-| `@app.route("/page")` and the `page()` function | a route for the browser: it builds a web page (HTML) from the list that your `list_books()` function returns, with each title linked to `books/<_id>`. It works once you have written `list_books()` in Step 2.3 |
-| `html.escape(...)` | replaces characters that have a meaning in HTML, such as `<` and `&`, so that a title cannot break the page |
-| `Response(..., headers={"Content-Type": "text/html"})` | tells the browser that the answer is a web page, not JSON |
+| `@app.route("/page")` and the `page()` function | provided: a web page for the browser, built from your `list_books()` results, with each title linked to its document. It works once you have written `list_books()` in Step 2.3. You do not need to understand its HTML details |
 
 ### 2.2 Test on your computer with `chalice local`
 
